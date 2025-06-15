@@ -1,21 +1,25 @@
-import tkinter as tk
+# Importando as bibliotecas
+import tkinter as tk # tkinter interface gráfica
 from tkinter import messagebox, ttk
-import serial
+import serial # Comunicação com a Esp 32 pela porta COM
 import time
-import threading
-import csv
-from datetime import datetime
-from openpyxl import Workbook
+import threading # Evita travamento da interface enquanto espera a leitura
+import csv  # Grava e lê histórico das leituras em arquivo csv
+from datetime import datetime # Adiciona data e hora
+from openpyxl import Workbook # Exporta o histórico para uma planilha excel
 
-PORTA_SERIAL = 'COM7'
-BAUDRATE = 9600
+PORTA_SERIAL = 'COM7' # Porta usada para comunicação com a Esp 32
+BAUDRATE = 9600 # Velocidade da conexão com a serial
 
+# A classe RFIDApp cria a interface e tambpem controla as funcionalidades
 class RFIDApp:
-    def __init__(self, root):
+    def __init__(self, root): # O __init__ constrói a interface
+        # Cria a janela principal, colocando o título e o tamannho
         self.root = root
         self.root.title("Controle RFID - ESP32")
         self.root.geometry("450x660")
 
+        # Criação dos componentes da interface, como labels, botões, subtitulos
         self.serial = None
         self.leitura_em_andamento = False
         self.conectar_serial()
@@ -58,6 +62,9 @@ class RFIDApp:
         self.botao_limpar = tk.Button(root, text="🧹 Limpar Histórico", command=self.limpar_historico)
         self.botao_limpar.pack(pady=5)
 
+    # Conexão com a Esp 32
+    # Tenta abrir a porta serial para falar com a Esp 32, um time.sleep(2) que
+    # espera a Esp 32 reiniciar, se não conseguir, mostra erro na interface.
     def conectar_serial(self):
         try:
             self.serial = serial.Serial(PORTA_SERIAL, BAUDRATE, timeout=1)
@@ -66,7 +73,7 @@ class RFIDApp:
             messagebox.showerror("Erro", f"Não foi possível abrir a porta {PORTA_SERIAL}")
 
     def ler_cartao(self):
-        if not self.serial or not self.serial.is_open:
+        if not self.serial or not self.serial.is_open: # Verifica se a porta serial está disponível
             messagebox.showerror("Erro", "Porta serial não conectada")
             return
 
@@ -91,7 +98,7 @@ class RFIDApp:
     def enviar_leitura(self):
         try:
             self.serial.reset_input_buffer()
-            self.serial.write(b'0\n')
+            self.serial.write(b'0\n') # Aqui envia "0" para a Esp 32 para começar a leitura do cartão, como está no menu.
 
             uid = None
             dados = None
@@ -99,7 +106,7 @@ class RFIDApp:
 
             while self.leitura_em_andamento and time.time() - inicio < 10:
                 linha = self.serial.readline().decode('utf-8', errors='ignore').strip()
-                if linha.startswith("UID:"):
+                if linha.startswith("UID:"): # Quando consegue encontrar o UID e DADOS_LIDOS separa os valores
                     uid = linha[4:]
                 elif linha.startswith("DADOS_LIDOS:"):
                     dados = linha[len("DADOS_LIDOS:"):].strip()
@@ -113,7 +120,7 @@ class RFIDApp:
             self.texto_dados.insert(tk.END, dados if dados else "Não foi possível obter os dados")
 
             if uid and dados:
-                self.salvar_historico(uid, dados)
+                self.salvar_historico(uid, dados) # Salva para o histórico
 
         except Exception as e:
             messagebox.showerror("Erro", str(e))
@@ -138,17 +145,18 @@ class RFIDApp:
             return
 
         self.botao_gravar.config(state=tk.DISABLED)
-        threading.Thread(target=self.enviar_gravacao, args=(texto,)).start()
+        threading.Thread(target=self.enviar_gravacao, args=(texto,)).start() # Cria uma thread para escutar a
+        # resposta da ESP32 sem travar a interface.
 
     def enviar_gravacao(self, texto):
         try:
             self.serial.reset_input_buffer()
-            self.serial.write(b'1\n')
+            self.serial.write(b'1\n') # Envia para a Esp 32 a opção "1" que é para gravar os dados
             time.sleep(1)
             self.serial.write((texto.ljust(16) + "#").encode('utf-8'))
 
             while True:
-                linha = self.serial.readline().decode('utf-8', errors='ignore').strip()
+                linha = self.serial.readline().decode('utf-8', errors='ignore').strip() # Lê linha por linha da Esp 32 via serial
                 if "success" in linha.lower() or "failed" in linha.lower():
                     break
 
@@ -225,7 +233,7 @@ class RFIDApp:
                 messagebox.showinfo("Limpo", "Histórico apagado com sucesso.")
             except Exception as e:
                 messagebox.showerror("Erro", f"Erro ao limpar histórico: {e}")
-
+# Cria a interface gráfica onde fica no loop principal do Tkinter
 if __name__ == "__main__":
     root = tk.Tk()
     app = RFIDApp(root)
